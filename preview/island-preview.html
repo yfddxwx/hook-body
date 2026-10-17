@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AuthIsland · 动效预览</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    background: #0b0d12; color: #e8e8f0; user-select: none;
+  }
+
+  /* ---------- 假桌面：用来验证胶囊不挡东西 ---------- */
+  .desktop {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(1200px 700px at 20% 0%, #1c2436 0%, transparent 60%),
+      radial-gradient(900px 600px at 85% 20%, #202033 0%, transparent 55%),
+      linear-gradient(160deg, #0d1119 0%, #080a0f 100%);
+  }
+  .win {
+    position: absolute; border-radius: 12px;
+    background: rgba(30, 35, 46, .72);
+    border: 1px solid rgba(255,255,255,.07);
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    backdrop-filter: blur(8px);
+  }
+  .win .bar { height: 34px; border-bottom: 1px solid rgba(255,255,255,.06); display: flex; align-items: center; padding: 0 12px; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #3a4050; }
+  .win .body { padding: 16px; font-size: 12px; color: #6b7280; line-height: 1.9; }
+
+  /* ---------- 胶囊 ---------- */
+  .island-wrap {
+    position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+    display: flex; justify-content: center;
+  }
+  .capsule {
+    position: relative; overflow: hidden;
+    width: 124px; height: 34px; border-radius: 17px;
+    background: linear-gradient(180deg, #0d0d12 0%, #060609 100%);
+    border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 14px 44px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.09);
+    will-change: width, height, border-radius;
+  }
+  .sheen {
+    position: absolute; inset: 0 0 auto 0; height: 48px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0));
+  }
+
+  .layer {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+  }
+  .layer.on { pointer-events: auto; }
+
+  /* 待机 */
+  #idle { width: 124px; height: 34px; gap: 6px; flex-direction: row; }
+  #idle .dotg { width: 9px; height: 9px; border-radius: 50%; background: #4ADE80; animation: breathe 1.5s ease-in-out infinite alternate; }
+  #idle span { font-size: 12px; color: #e7e7f0; letter-spacing: .1px; }
+  @keyframes breathe { from { opacity: .4; } to { opacity: 1; } }
+
+  /* 授权 */
+  #alert {
+    width: 452px; height: 176px; display: block; padding: 15px 20px;
+    text-align: left;
+  }
+  .hd { display: flex; align-items: center; gap: 9px; }
+  .lock {
+    width: 24px; height: 24px; border-radius: 8px; background: rgba(255,255,255,.12);
+    display: grid; place-items: center; flex: none;
+  }
+  .lock svg { width: 13px; height: 13px; }
+  .title { font-size: 13px; font-weight: 600; color: #f5f5fa; }
+  .pill {
+    margin-left: 2px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(255,255,255,.12); font-size: 10.5px; color: #c7c7d4;
+    font-family: "Cascadia Mono", Consolas, monospace;
+  }
+  .count {
+    margin-left: auto; font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 11px; color: #8b8b99;
+  }
+  .detail {
+    margin-top: 12px; height: 52px; padding: 8px 11px; border-radius: 10px;
+    background: rgba(255,255,255,.065);
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 11.5px;
+    color: #d2d2de; line-height: 1.45; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    word-break: break-all;
+  }
+  .actions { position: absolute; left: 20px; right: 20px; bottom: 15px; display: flex; align-items: center; }
+  .btn {
+    height: 34px; padding: 0 20px; border-radius: 17px; border: 0;
+    font-size: 12.5px; cursor: pointer; font-family: inherit;
+    transition: background .14s ease, transform .1s ease;
+  }
+  .btn:active { transform: scale(.97); }
+  .deny { background: rgba(255,255,255,.09); color: #e4e4ee; margin-right: 8px; }
+  .deny:hover { background: rgba(255,255,255,.17); }
+  .allow { background: #fff; color: #0a0a0e; font-weight: 600; }
+  .allow:hover { background: #e4e4f0; }
+  .queue { margin-left: auto; font-size: 11px; color: #7a7a88; }
+
+  /* 结果 */
+  #result { width: 236px; height: 62px; gap: 9px; }
+  .badge { width: 26px; height: 26px; border-radius: 13px; display: grid; place-items: center; }
+  .badge svg { width: 14px; height: 14px; }
+  #result span { font-size: 13px; color: #f2f2f8; }
+
+  .progress {
+    position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
+    background: #FFB020; opacity: 0; border-radius: 1px;
+  }
+
+  /* ---------- 控制面板 ---------- */
+  .panel {
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
+    width: min(560px, calc(100% - 40px));
+    padding: 16px 18px; border-radius: 16px;
+    background: rgba(18, 20, 27, .82); border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 24px 70px rgba(0,0,0,.6);
+    backdrop-filter: blur(16px);
+  }
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .panel .lab { font-size: 12px; color: #98a0b3; width: 92px; flex: none; }
+  .panel .val { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: #6ee7a8; width: 64px; text-align: right; }
+  input[type=range] { flex: 1; accent-color: #6ee7a8; height: 3px; }
+  .panel button {
+    flex: 1; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.06); color: #dfe3ee; font-size: 12.5px;
+    cursor: pointer; font-family: inherit;
+  }
+  .panel button:hover { background: rgba(255,255,255,.11); }
+  .hint { font-size: 11.5px; color: #606a7d; margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="desktop">
+  <div class="win" style="left:8%; top:180px; width:320px; height:260px;">
+    <div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+    <div class="body">这个窗口用来验证：胶囊浮层只占据自己那一小块，<br />周围区域鼠标可以正常穿透、点击。</div>
+  </div>
+  <div class="win" style="right:7%; top:300px; width:360px; height:220px;">
+    <div class="bar"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+    <div class="body">原生版同样用 WM_NCHITTEST 返回 HTTRANSPARENT 实现。</div>
+  </div>
+</div>
+
+<div class="island-wrap">
+  <div class="capsule" id="capsule">
+    <div class="sheen"></div>
+
+    <div class="layer on" id="idle">
+      <i class="dotg"></i><span>WorkBuddy</span>
+    </div>
+
+    <div class="layer" id="alert">
+      <div class="hd">
+        <div class="lock">
+          <svg viewBox="0 0 16 16" fill="none" stroke="#F0F0F6" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 7V5.5a3 3 0 0 1 6 0V7" />
+            <rect x="3.5" y="7" width="9" height="6" rx="1.4" />
+          </svg>
+        </div>
+        <div class="title">需要你的授权</div>
+        <div class="pill" id="toolName">Bash</div>
+        <div class="count" id="countdown">60s</div>
+      </div>
+
+      <div class="detail" id="detail">npm install -g @tencent/wecom-cli</div>
+
+      <div class="actions">
+        <button class="btn deny" id="denyBtn">拒绝</button>
+        <button class="btn allow" id="allowBtn">允许</button>
+        <div class="queue" id="queue"></div>
+      </div>
+    </div>
+
+    <div class="layer" id="result">
+      <div class="badge" id="badge">
+        <svg viewBox="0 0 16 16" fill="none" stroke="#4ADE80" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path id="glyph" d="M4 8.5 7 11.5 12.5 5.5" />
+        </svg>
+      </div>
+      <span id="resultText">已允许</span>
+    </div>
+
+    <div class="progress" id="progress"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <div class="lab">弹簧刚度</div>
+    <input type="range" id="k" min="120" max="700" step="10" value="320" />
+    <div class="val" id="kv">320</div>
+  </div>
+  <div class="row">
+    <div class="lab">阻尼</div>
+    <input type="range" id="d" min="10" max="60" step="1" value="26" />
+    <div class="val" id="dv">26</div>
+  </div>
+  <div class="row">
+    <button id="askBtn">模拟一次授权请求</button>
+    <button id="resetBtn">回到待机</button>
+  </div>
+  <div class="hint">拖滑块感受过冲变化 · 阻尼 ≈ 2√刚度 时为临界阻尼（不回弹）</div>
+</div>
+
+<script>
+const SIZES = {
+  idle:   { w: 124, h: 34,  r: 17 },
+  alert:  { w: 452, h: 176, r: 26 },
+  result: { w: 236, h: 62,  r: 31 },
+};
+
+class Spring {
+  constructor(v, k, d) { this.v = v; this.t = v; this.vel = 0; this.k = k; this.d = d; }
+  set(t) { this.t = t; }
+  tick(dt) {
+    const f = -this.k * (this.v - this.t) - this.d * this.vel;
+    this.vel += f * dt;
+    this.v += this.vel * dt;
+    if (Math.abs(this.v - this.t) < 0.05 && Math.abs(this.vel) < 0.5) {
+      this.v = this.t; this.vel = 0; return false;
+    }
+    return true;
+  }
+}
+
+let K = 320, D = 26;
+const sw = new Spring(SIZES.idle.w, K, D);
+const sh = new Spring(SIZES.idle.h, K, D);
+const sr = new Spring(SIZES.idle.r, K, D);
+
+const capsule = document.getElementById('capsule');
+const layers = {
+  idle: document.getElementById('idle'),
+  alert: document.getElementById('alert'),
+  result: document.getElementById('result'),
+};
+const progress = document.getElementById('progress');
+const countdown = document.getElementById('countdown');
+
+let state = 'idle';
+let moving = false;
+let deadline = 0, total = 60000;
+
+function apply() {
+  const w = Math.max(1, sw.v), h = Math.max(1, sh.v), r = Math.min(sr.v, h / 2);
+  capsule.style.width = w + 'px';
+  capsule.style.height = h + 'px';
+  capsule.style.borderRadius = r + 'px';
+}
+
+function tick(now) {
+  const dt = Math.min(0.05, (now - tick.last) / 1000 || 0.016);
+  tick.last = now;
+
+  let m = false;
+  m = sw.tick(dt) || m;
+  m = sh.tick(dt) || m;
+  m = sr.tick(dt) || m;
+  apply();
+
+  if (state === 'alert') {
+    const remain = Math.max(0, deadline - Date.now());
+    countdown.textContent = Math.ceil(remain / 1000) + 's';
+    const ratio = Math.max(0, Math.min(1, remain / total));
+    progress.style.width = Math.max(0, (sw.v - 2) * ratio) + 'px';
+    progress.style.background = ratio < 0.22 ? '#F87171' : '#FFB020';
+    m = true;
+  }
+
+  if (m) requestAnimationFrame(tick);
+  else moving = false;
+}
+tick.last = performance.now();
+
+function kick() {
+  if (!moving) { moving = true; requestAnimationFrame(tick); }
+}
+
+function setTarget(s) {
+  sw.set(s.w); sh.set(s.h); sr.set(s.r); kick();
+}
+
+function show(name, delay = 60) {
+  Object.entries(layers).forEach(([k, el]) => {
+    if (k === name) {
+      el.classList.add('on');
+      el.style.transition = 'none';
+      el.style.opacity = '0';
+      el.style.transform = 'translate(-50%, calc(-50% + 7px))';
+      void el.offsetWidth;
+      el.style.transition = 'opacity .19s cubic-bezier(.22,.8,.3,1), transform .23s cubic-bezier(.22,.8,.3,1)';
+      setTimeout(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'translate(-50%, -50%)';
+      }, delay);
+    } else {
+      el.classList.remove('on');
+      el.style.transition = 'opacity .1s ease';
+      el.style.opacity = '0';
+    }
+  });
+}
+
+function ask() {
+  clearTimeout(window.__timer);
+  state = 'alert';
+  total = 60000;
+  deadline = Date.now() + total;
+  progress.style.opacity = '1';
+  document.getElementById('detail').textContent = pickDetail();
+  document.getElementById('queue').textContent = Math.random() > 0.6 ? '+2 待处理' : '';
+  setTarget(SIZES.alert);
+  show('alert', 70);
+  kick();
+}
+
+function resolve(allow) {
+  clearTimeout(window.__timer);
+  state = 'result';
+  progress.style.opacity = '0';
+
+  const badge = document.getElementById('badge');
+  const glyph = document.getElementById('glyph');
+  badge.style.background = allow ? 'rgba(74,222,128,.13)' : 'rgba(248,113,113,.13)';
+  glyph.setAttribute('stroke', allow ? '#4ADE80' : '#F87171');
+  glyph.setAttribute('d', allow ? 'M4 8.5 7 11.5 12.5 5.5' : 'M5 5 11 11 M11 5 5 11');
+  document.getElementById('resultText').textContent = allow ? '已允许' : '已拒绝';
+
+  setTarget(SIZES.result);
+  show('result', 30);
+
+  window.__timer = setTimeout(() => {
+    state = 'idle';
+    setTarget(SIZES.idle);
+    show('idle', 50);
+  }, 1150);
+}
+
+const details = [
+  'npm install -g @tencent/wecom-cli',
+  'git push origin feature/auth-island --force',
+  'rm -rf D:/workbuuddy/heath/.cache',
+  'curl -X POST https://api.example.com/v1/deploy -d @release.json',
+];
+let di = 0;
+function pickDetail() { return details[di++ % details.length]; }
+
+document.getElementById('askBtn').onclick = ask;
+document.getElementById('allowBtn').onclick = () => resolve(true);
+document.getElementById('denyBtn').onclick = () => resolve(false);
+document.getElementById('resetBtn').onclick = () => {
+  clearTimeout(window.__timer);
+  state = 'idle';
+  progress.style.opacity = '0';
+  setTarget(SIZES.idle);
+  show('idle', 40);
+};
+
+const kEl = document.getElementById('k'), dEl = document.getElementById('d');
+function updateSprings() {
+  K = +kEl.value; D = +dEl.value;
+  document.getElementById('kv').textContent = K;
+  document.getElementById('dv').textContent = D;
+  [sw, sh, sr].forEach(s => { s.k = K; s.d = D; });
+}
+kEl.oninput = updateSprings;
+dEl.oninput = updateSprings;
+
+// 入场
+sw.v = 48; sh.v = 9; sr.v = 4.5; apply();
+requestAnimationFrame(() => { setTarget(SIZES.idle); setTimeout(() => show('idle', 0), 60); });
+
+// 演示：3 秒后自动来一条
+setTimeout(ask, 2600);
+</script>
+</body>
+</html>

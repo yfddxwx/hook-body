@@ -1,0 +1,18 @@
+{
+  "$comment": "合并进 ~/.codex/hooks.json（或在 ~/.codex/config.toml 里用等价的 [hooks] 表）。另需在 config.toml 设置 [features] codex_hooks = true，并在 /hooks 里 review & trust。",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:\\workbuuddy\\heath\\agent-auth-island\\hooks\\codex_permission_request.py\"",
+            "timeout": 90,
+            "statusMessage": "等待 AuthIsland 授权"
+          }
+        ]
+      }
+    ]
+  }
+}

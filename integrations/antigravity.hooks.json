@@ -1,0 +1,18 @@
+{
+  "$comment": "合并进 ~/.gemini/config/hooks.json（Antigravity 2.0 / CLI / IDE 共用）。也可放工作区 .agents/hooks.json，或从 Settings > Customizations > Hooks 查看开关。",
+  "auth-island": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_to_file|replace_file_content|multi_replace_file_content|call_mcp_tool|browser_.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"D:\\workbuuddy\\heath\\agent-auth-island\\hooks\\antigravity_pre_tool_use.py\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}

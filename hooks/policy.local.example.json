@@ -1,0 +1,6 @@
+{
+  "_comment": "复制为同目录 policy.local.json 即生效。正则不区分大小写，匹配整条命令；建议都用 ^ 锚定，避免误伤。",
+  "alwaysSilent": [],
+  "alwaysAsk": [],
+  "silentEmits": "allow"
+}

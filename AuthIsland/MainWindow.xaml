@@ -1,0 +1,349 @@
+<Window x:Class="AuthIsland.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AuthIsland"
+        Width="560" Height="300"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        WindowStartupLocation="Manual"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <Grid x:Name="Root" Background="Transparent">
+
+        <Grid x:Name="CapsuleHost"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              Margin="0,8,0,0">
+
+            <!-- 投影单独一层：不给含文字的容器加 Effect，否则 ClearType 失效、文字会发糊 -->
+            <Border x:Name="Shadow"
+                    Width="124" Height="34" CornerRadius="17"
+                    Background="#000000" Opacity="0.30"
+                    VerticalAlignment="Top" Margin="0,4,0,0">
+                <Border.Effect>
+                    <BlurEffect Radius="16" RenderingBias="Performance" />
+                </Border.Effect>
+            </Border>
+
+            <Border x:Name="Capsule"
+                    Width="124" Height="34" CornerRadius="17"
+                    Background="{StaticResource CapsuleFill}"
+                    BorderThickness="1"
+                    VerticalAlignment="Top">
+
+                <Border.BorderBrush>
+                    <!-- 一圈上亮下暗的内描边：玻璃边缘的折射感 -->
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#3CFFFFFF" Offset="0" />
+                        <GradientStop Color="#12FFFFFF" Offset="0.45" />
+                        <GradientStop Color="#26FFFFFF" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="显示胶囊" Click="OnMenuShowClick" />
+                        <MenuItem Header="暂停拦截" IsCheckable="True" Tag="pause" Click="OnMenuPauseClick" />
+                        <Separator />
+                        <MenuItem Header="退出 AuthIsland" Click="OnExitClick" />
+                    </ContextMenu>
+                </Border.ContextMenu>
+
+                <Grid x:Name="ContentHost" ClipToBounds="True">
+
+                    <!-- ① 雾面底色：斜向微光，让黑不是死黑 -->
+                    <Border IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#16FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="0.42" />
+                                <GradientStop Color="#0AFFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+
+                    <!-- ② 磨砂颗粒：两层互质周期的噪声叠加，看不出平铺重复 -->
+                    <Rectangle x:Name="FrostA" IsHitTestVisible="False" Fill="#FFFFFF" Opacity="0.34" />
+                    <Rectangle x:Name="FrostB" IsHitTestVisible="False" Fill="#FFFFFF" Opacity="0.26" />
+
+                    <!-- ③ 顶部高光 -->
+                    <Border x:Name="Sheen" IsHitTestVisible="False"
+                            VerticalAlignment="Top" Height="48">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#1CFFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+
+                    <!-- ================= 待机 ================= -->
+                    <Grid x:Name="IdleLayer">
+                        <Grid.Triggers>
+                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetName="StatusDot"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         From="0.4" To="1" Duration="0:0:1.5">
+                                            <DoubleAnimation.EasingFunction>
+                                                <SineEase EasingMode="EaseInOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Grid.Triggers>
+
+                        <StackPanel x:Name="IdleContent" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid Width="12" Height="12">
+                                <Ellipse x:Name="StatusDot" Width="7" Height="7"
+                                         Fill="#4ADE80"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock x:Name="IdleText" Text="WorkBuddy" Foreground="#E7E7F0" FontSize="12"
+                                       Margin="6,0,2,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- 休眠时只剩这一颗暗点，几乎不可见 -->
+                        <Ellipse x:Name="DormantDot" Width="6" Height="6" Fill="#4ADE80"
+                                 Opacity="0" IsHitTestVisible="False"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- ================= 授权请求 ================= -->
+                    <Grid x:Name="AlertLayer" Width="452" Height="176"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Opacity="0" IsHitTestVisible="False">
+                        <Grid Margin="20,15,20,15">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- 标题行 -->
+                            <Grid Grid.Row="0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Width="24" Height="24" CornerRadius="8"
+                                            Background="#1FFFFFFF" VerticalAlignment="Center">
+                                        <Viewbox Width="13" Height="13">
+                                            <Canvas Width="16" Height="16">
+                                                <Path Stroke="#F0F0F6" StrokeThickness="1.5"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      StrokeLineJoin="Round"
+                                                      Data="M5,7 L5,5.5 A3,3 0 0 1 11,5.5 L11,7 M3.5,7 L12.5,7 L12.5,13 L3.5,13 Z" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Border>
+
+                                    <TextBlock Text="需要你的授权" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#F5F5FA" Margin="9,0,0,0"
+                                               VerticalAlignment="Center" />
+
+                                    <Border Background="#1FFFFFFF" CornerRadius="6"
+                                            Padding="7,3" Margin="9,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="ToolNameText" Text="Bash"
+                                                   FontFamily="Cascadia Mono, Consolas"
+                                                   FontSize="10.5" Foreground="#C7C7D4" />
+                                    </Border>
+
+                                    <!-- 闸门的判断依据：为什么这次找你（高危/写工作区外/删除…） -->
+                                    <Border x:Name="RiskChip" CornerRadius="6" Padding="7,3"
+                                            Margin="6,0,0,0" VerticalAlignment="Center"
+                                            Visibility="Collapsed" MaxWidth="188">
+                                        <TextBlock x:Name="RiskText" Text=""
+                                                   FontSize="10.5" TextTrimming="CharacterEllipsis"
+                                                   TextWrapping="NoWrap" />
+                                    </Border>
+                                </StackPanel>
+
+                                <TextBlock x:Name="CountdownText" Text="60s"
+                                           FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                           Foreground="#8B8B99"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <!-- 具体要执行什么 -->
+                            <Border Grid.Row="1" Margin="0,12,0,0" MaxHeight="54"
+                                    Background="#10FFFFFF" CornerRadius="10" Padding="11,8"
+                                    VerticalAlignment="Top">
+                                <TextBlock x:Name="DetailText" Text=""
+                                           FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                                           Foreground="#D2D2DE" TextWrapping="Wrap"
+                                           LineHeight="16" MaxHeight="38"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
+
+                            <!-- 操作 -->
+                            <Grid Grid.Row="3" Margin="0,13,0,0">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Border x:Name="DenyButton" Height="34" CornerRadius="17"
+                                            Padding="20,0" Margin="0,0,8,0" Cursor="Hand">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#14FFFFFF" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#26FFFFFF" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="拒绝" Foreground="#E4E4EE" FontSize="12.5"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <Border x:Name="AllowButton" Height="34" CornerRadius="17"
+                                            Padding="20,0" Cursor="Hand">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#FFFFFF" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#E4E4F0" />
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="允许" Foreground="#0A0A0E" FontSize="12.5"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+
+                                <TextBlock x:Name="QueueText" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center" FontSize="11"
+                                           Foreground="#7A7A88" />
+                            </Grid>
+                        </Grid>
+                    </Grid>
+
+                    <!-- ================= 结果反馈 ================= -->
+                    <Grid x:Name="ResultLayer" Width="236" Height="62"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Opacity="0" IsHitTestVisible="False">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border x:Name="ResultBadge" Width="26" Height="26" CornerRadius="13"
+                                    Background="#224ADE80">
+                                <Path x:Name="ResultGlyph" Width="16" Height="16" Stretch="None"
+                                      Stroke="#4ADE80" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M4,8.5 L7,11.5 L12.5,5.5" />
+                            </Border>
+                            <TextBlock x:Name="ResultText" Text="已允许" Foreground="#F2F2F8"
+                                       FontSize="13" Margin="9,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- ================= 任务完成通知（点击直达会话） ================= -->
+                    <Grid x:Name="DoneLayer" Width="336" Height="72"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Opacity="0" IsHitTestVisible="False" Cursor="Hand">
+                        <Grid Margin="15,11,15,11">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Width="26" Height="26" CornerRadius="13"
+                                    Background="#224ADE80" VerticalAlignment="Center">
+                                <Path Stroke="#4ADE80" StrokeThickness="2"
+                                      Width="16" Height="16" Stretch="None"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M4,8.5 L7,11.5 L12.5,5.5" />
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Margin="10,0,10,0" VerticalAlignment="Center">
+                                <TextBlock Text="任务完成" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="#F2F2F8" />
+                                <TextBlock x:Name="DoneSummary" Text="" FontSize="11"
+                                           Foreground="#9A9AA8" Margin="0,3,0,0"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="查看会话" FontSize="11" Foreground="#8FE3B0"
+                                           VerticalAlignment="Center" />
+                                <Path Data="M0,0 L3.5,3.5 L0,7" Stroke="#8FE3B0" StrokeThickness="1.6"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Margin="4,1,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+
+                    <!-- ================= 状态面板（点胶囊打开） ================= -->
+                    <Grid x:Name="PanelLayer" Width="320" Height="140"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Opacity="0" IsHitTestVisible="False">
+                        <Grid Margin="18,14,18,14">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse x:Name="PanelDot" Width="7" Height="7"
+                                             Fill="#4ADE80" VerticalAlignment="Center" />
+                                    <TextBlock Text="AuthIsland" FontSize="12.5" Foreground="#F0F0F6"
+                                               Margin="7,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="PanelState" Text="待机" FontSize="10"
+                                               Foreground="#6F6F7C" Margin="7,1,0,0"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="PanelPort" Text="127.0.0.1:18765"
+                                           FontFamily="Cascadia Mono, Consolas" FontSize="9.5"
+                                           Foreground="#5E5E6A"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <TextBlock x:Name="PanelStatus" Grid.Row="1" Text=""
+                                       FontSize="11" Foreground="#9A9AA8"
+                                       LineHeight="16" TextWrapping="Wrap"
+                                       MaxHeight="34" Margin="0,8,0,0"
+                                       TextTrimming="CharacterEllipsis" />
+
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
+                                <Border x:Name="PauseButton" Style="{StaticResource PanelButton}" Margin="0,0,7,0">
+                                    <TextBlock x:Name="PauseText" Text="暂停拦截"
+                                               Style="{StaticResource PanelButtonText}" />
+                                </Border>
+                                <Border x:Name="HideButton" Style="{StaticResource PanelButton}" Margin="0,0,7,0">
+                                    <TextBlock Text="隐藏" Style="{StaticResource PanelButtonText}" />
+                                </Border>
+                                <Border x:Name="QuitButton" Style="{StaticResource PanelButton}">
+                                    <TextBlock Text="退出" Style="{StaticResource PanelButtonText}" />
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+
+                    <!-- 倒计时进度 -->
+                    <Border x:Name="ProgressFill" Height="2" Width="0"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Background="#FFB020" Opacity="0" CornerRadius="1" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

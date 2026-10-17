@@ -1,0 +1,43 @@
+<Application x:Class="AuthIsland.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+
+        <FontFamily x:Key="UiFont">Microsoft YaHei UI, Segoe UI</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Microsoft YaHei UI</FontFamily>
+
+        <SolidColorBrush x:Key="TextPrimary" Color="#F4F4FA" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#9E9EAC" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#74747F" />
+
+        <!-- 胶囊主体：近黑的玻璃。留一点透光（不是纯 opaque），
+             配合上层的雾面渐变 + 磨砂颗粒 + 边缘高光，才有玻璃的层次。 -->
+        <LinearGradientBrush x:Key="CapsuleFill" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#E40E0F14" Offset="0" />
+            <GradientStop Color="#D908080C" Offset="1" />
+        </LinearGradientBrush>
+
+        <!-- 状态面板里的小按钮 -->
+        <Style x:Key="PanelButton" TargetType="Border">
+            <Setter Property="Background" Value="#14FFFFFF" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="13,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#2AFFFFFF" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PanelButtonText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E4E4EE" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+    </Application.Resources>
+</Application>

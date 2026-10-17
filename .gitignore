@@ -1,0 +1,18 @@
+# 构建产物
+bin/
+obj/
+*.user
+.vs/
+
+# 发布产物（安装包走 GitHub Release，不入库）
+publish/
+release/
+
+# 运行期产物
+__pycache__/
+*.pyc
+hooks/_hook.log
+_hook.log
+
+# 本地验证截图（截图统一放 docs/screenshots/）
+shot-*.png
