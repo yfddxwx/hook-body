@@ -18,7 +18,8 @@ Windows 11 · 原生 WPF (.NET 8) · 无 Electron / 无 WebView。
 
 ## 一键安装（推荐，任何 WorkBuddy 用户可用）
 
-拿到 `AuthIsland.exe`（单文件，69MB，自带 .NET 运行时）后：
+从 [Releases](https://github.com/yfddxwx/hook-body/releases/latest) 下载 `AuthIsland.exe`
+（单文件，69MB，自带 .NET 运行时）后：
 
 1. **双击它** → 点「一键安装」
 2. 完成。胶囊已在屏幕顶部待命。
