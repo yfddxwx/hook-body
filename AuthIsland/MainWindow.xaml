@@ -111,8 +111,7 @@
                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                             <TextBlock x:Name="IdleText" Text="WorkBuddy" Foreground="#E7E7F0" FontSize="12"
-                                       Margin="6,0,2,0" VerticalAlignment="Center" />
-                        </StackPanel>
+                                       Margin="6,0,2,0" VerticalAlignment="Center" />                        </StackPanel>
 
                         <!-- 休眠时只剩这一颗暗点，几乎不可见 -->
                         <Ellipse x:Name="DormantDot" Width="6" Height="6" Fill="#4ADE80"
@@ -259,9 +258,9 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <Border Width="26" Height="26" CornerRadius="13"
+                            <Border x:Name="DoneIconBorder" Width="26" Height="26" CornerRadius="13"
                                     Background="#224ADE80" VerticalAlignment="Center">
-                                <Path Stroke="#4ADE80" StrokeThickness="2"
+                                <Path x:Name="DoneIcon" Stroke="#4ADE80" StrokeThickness="2"
                                       Width="16" Height="16" Stretch="None"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"
@@ -270,7 +269,7 @@
                             </Border>
 
                             <StackPanel Grid.Column="1" Margin="10,0,10,0" VerticalAlignment="Center">
-                                <TextBlock Text="任务完成" FontSize="13" FontWeight="SemiBold"
+                                <TextBlock x:Name="DoneTitle" Text="任务完成" FontSize="13" FontWeight="SemiBold"
                                            Foreground="#F2F2F8" />
                                 <TextBlock x:Name="DoneSummary" Text="" FontSize="11"
                                            Foreground="#9A9AA8" Margin="0,3,0,0"
@@ -278,9 +277,9 @@
                             </StackPanel>
 
                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="查看会话" FontSize="11" Foreground="#8FE3B0"
+                                <TextBlock x:Name="DoneAction" Text="查看会话" FontSize="11" Foreground="#8FE3B0"
                                            VerticalAlignment="Center" />
-                                <Path Data="M0,0 L3.5,3.5 L0,7" Stroke="#8FE3B0" StrokeThickness="1.6"
+                                <Path x:Name="DoneArrow" Data="M0,0 L3.5,3.5 L0,7" Stroke="#8FE3B0" StrokeThickness="1.6"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                       StrokeLineJoin="Round"
                                       Margin="4,1,0,0" VerticalAlignment="Center" />
@@ -317,7 +316,17 @@
                                            HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
 
-                            <TextBlock x:Name="PanelStatus" Grid.Row="1" Text=""
+                            <!-- 宿主进程状态：在线绿点 / 离线灰点 + 一句话 -->
+                            <StackPanel x:Name="HostRow" Grid.Row="1" Orientation="Horizontal"
+                                        Margin="0,7,0,0" VerticalAlignment="Center">
+                                <Ellipse x:Name="HostDot" Width="5" Height="5"
+                                         Fill="#4ADE80" VerticalAlignment="Center" />
+                                <TextBlock x:Name="HostState" Text="WorkBuddy 已连接"
+                                           FontSize="10" Foreground="#7C7C8A"
+                                           Margin="6,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="PanelStatus" Grid.Row="2" Text=""
                                        FontSize="11" Foreground="#9A9AA8"
                                        LineHeight="16" TextWrapping="Wrap"
                                        MaxHeight="34" Margin="0,8,0,0"

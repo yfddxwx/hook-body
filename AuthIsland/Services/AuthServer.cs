@@ -32,6 +32,9 @@ public sealed class AuthServer : IDisposable
     /// <summary>任务跑完的通知（Stop hook 推过来）。这个端点不挂起，收到就回。</summary>
     public event Action<DoneNotice>? NotifyReceived;
 
+    /// <summary>宿主主动报到（/hello）。用来加速"宿主已恢复"的判定。</summary>
+    public event Action? HostSeen;
+
     public int Port { get; }
 
     /// <summary>暂停拦截：所有请求直接返回 pass，交回宿主自己的审批流程。</summary>
@@ -91,6 +94,13 @@ public sealed class AuthServer : IDisposable
                 }
                 else if (path.StartsWith("/health", StringComparison.Ordinal))
                 {
+                    await WriteJsonAsync(stream, 200, "{\"ok\":true}");
+                }
+                else if (method == "POST" && path.StartsWith("/hello", StringComparison.Ordinal))
+                {
+                    // 宿主刚启动时打的招呼（SessionStart / auth_success 钩子）。
+                    // 比进程轮询更早、更准，能把"宿主离线"状态立刻消掉。
+                    HostSeen?.Invoke();
                     await WriteJsonAsync(stream, 200, "{\"ok\":true}");
                 }
                 else if (method == "POST" && path.StartsWith("/shutdown", StringComparison.Ordinal))

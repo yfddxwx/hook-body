@@ -42,6 +42,10 @@ public static class HookRunner
                 case "permissionrequest":
                 case "perm":
                     return PermissionRequest();
+                case "hello":
+                case "presence":
+                    IslandClient.Hello();
+                    return 0;
                 case "pretooluse":
                 case "pre":
                     return PreToolUse(hostIsWorkBuddy: true);

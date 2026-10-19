@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using AuthIsland.Cli;
 
@@ -32,10 +33,25 @@ public static class Program
             return IslandClient.IsAlive() ? 0 : 1;
         }
 
+        // 单实例：钩子会在胶囊不在时自动把它拉起来，再加上开机自启，
+        // 很容易出现两个胶囊同时抢 18765。第二个直接静默退出。
+        try
+        {
+            _single = new Mutex(true, @"Local\AuthIsland.SingleInstance", out var created);
+            if (!created) return 0;
+        }
+        catch
+        {
+            // 拿不到互斥体也不阻断启动（极端情况下宁可多开一个，也不要没有胶囊）
+        }
+
         var app = new App();
         app.InitializeComponent();
         return app.Run();
     }
+
+    // 进程活着期间必须一直持有，回收就失去互斥
+    private static Mutex? _single;
 
     private static string? ValueOf(string[] args, string name)
     {

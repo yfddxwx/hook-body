@@ -148,6 +148,12 @@ public static class Installer
             // 只挂 PermissionRequest：WorkBuddy 自己的权限系统判定「需要授权」时才会调它。
             // 不给 matcher = 所有工具都适用；但真正触发的只有宿主本来就要弹窗的那些。
             AppendHook(hooks, "PermissionRequest", null, HookCommand("permission"), 600);
+
+            // 宿主起来了：立刻告诉胶囊（比进程轮询早最多 1 秒）。
+            // SessionStart 在会话开/恢复时触发；auth_success 在登录成功时触发，覆盖冷启动。
+            AppendHook(hooks, "SessionStart", null, HookCommand("hello"), 5);
+            AppendHook(hooks, "Notification", "auth_success", HookCommand("hello"), 5);
+
             AppendHook(hooks, "Stop", null, HookCommand("stop"), 5);
 
             var options = new JsonSerializerOptions

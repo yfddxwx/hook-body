@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace AuthIsland.Cli;
 
@@ -39,6 +41,40 @@ public static class IslandClient
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// 胶囊不在就把它拉起来（仅限已安装到本机的情况）。
+    ///
+    /// 为什么要这一步：胶囊被任务管理器结束、被安全软件清掉、或开机时自启被拦，
+    /// 用户唯一的感受就是"怎么不弹了"，且完全不知道该怎么办。
+    /// 让下一次钩子顺手把它拉起来，是唯一不需要用户动手的补救方式。
+    /// </summary>
+    public static bool EnsureRunning(int waitMs = 2500)
+    {
+        if (IsAlive()) return true;
+        if (!File.Exists(AppPaths.TargetExe)) return false;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(AppPaths.TargetExe)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = AppPaths.Home,
+            });
+        }
+        catch
+        {
+            return false;
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < waitMs)
+        {
+            Thread.Sleep(120);
+            if (IsAlive()) return true;
+        }
+        return false;
     }
 
     /// <summary>POST 一段 JSON，返回响应正文；任何异常返回 null。</summary>
@@ -94,7 +130,7 @@ public static class IslandClient
     /// </summary>
     public static string Ask(string tool, string detail, string cwd, string risk, string reason, int timeoutMs)
     {
-        if (!IsAlive()) return "pass";
+        if (!EnsureRunning(3000)) return "pass";
 
         var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
@@ -128,7 +164,7 @@ public static class IslandClient
 
     public static void Notify(string sessionId, string summary, string cwd, int timeoutMs)
     {
-        if (!IsAlive()) return;
+        if (!EnsureRunning(1000)) return;
 
         var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
@@ -138,5 +174,16 @@ public static class IslandClient
         });
 
         Post("/notify", payload, timeoutMs);
+    }
+
+    /// <summary>
+    /// 报到：告诉胶囊"宿主起来了"。用在 SessionStart / 登录成功这类钩子上，
+    /// 让离线态比进程轮询早一点消掉（轮询最多慢 1 秒，这个几乎即时）。
+    /// 失败完全忽略——它只是加速，不是必需。
+    /// </summary>
+    public static void Hello(int timeoutMs = 600)
+    {
+        if (!EnsureRunning(1500)) return;
+        Post("/hello", "{}", timeoutMs);
     }
 }

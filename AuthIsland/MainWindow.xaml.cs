@@ -29,6 +29,13 @@ public partial class MainWindow : Window
     private static readonly Brush OkBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80)));
     private static readonly Brush WarnBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xFF, 0xB0, 0x20)));
     private static readonly Brush DangerBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)));
+    private static readonly Brush DoneAccentBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x8F, 0xE3, 0xB0)));
+
+    // 宿主离线：灰点 + 灰字。不用红色 —— 这不是错误，只是"现在没人在用我"
+    private static readonly Brush OffBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x6B, 0x6B, 0x78)));
+    private static readonly Brush OffTextBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x99)));
+    private static readonly Brush OnTextBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xE7, 0xE7, 0xF0)));
+    private static readonly Brush DimTextBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x7C, 0x7C, 0x8A)));
 
     // 无事件多久后开始"躲起来"：先缩成一点，再彻底隐藏（隐藏后仍有托盘入口）
     private static readonly TimeSpan DormantAfter = Seconds("AUTH_ISLAND_DORMANT_SEC", 15);
@@ -38,6 +45,9 @@ public partial class MainWindow : Window
     // 默认**总是提示**——用户要的就是「这轮跑完了」这一眼。
     // 想恢复「WorkBuddy 在前台就安静」的旧行为，设 AUTH_ISLAND_NOTIFY_QUIET=1。
     private static readonly TimeSpan DoneLinger = TimeSpan.FromSeconds(8);
+
+    // 宿主退出提示：比完成通知留久一点（这条消息更意外，用户需要时间读完）
+    private static readonly TimeSpan OfflineLinger = TimeSpan.FromSeconds(12);
     private static readonly bool QuietWhenForeground =
         Environment.GetEnvironmentVariable("AUTH_ISLAND_NOTIFY_QUIET") == "1";
 
@@ -68,6 +78,14 @@ public partial class MainWindow : Window
     private bool _paused;
     private bool _wakeQueued;
 
+    // 宿主（WorkBuddy 等）是否在场。null = 还没探测过
+    private bool? _hostAlive;
+    private DateTime _hostGoneSinceUtc = DateTime.MinValue;
+
+    // 离线态亮着但一直被无视，就收起来（不永久占屏幕顶部）
+    private static readonly TimeSpan HostOfflineLinger = TimeSpan.FromSeconds(90);
+    private bool _hostOfflineShown;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -76,6 +94,16 @@ public partial class MainWindow : Window
         _server.RequestReceived += OnServerRequest;
         _server.RequestExpired += OnServerExpired;
         _server.NotifyReceived += OnNotifyReceived;
+        _server.HostSeen += () => Dispatcher.InvokeAsync(() =>
+        {
+            // 宿主主动报到：比轮询早最多 1 秒，先让它亮起来
+            if (_hostAlive == true) return;
+            HookRunner.Trace("[HOST] /hello 报到");
+            _hostAlive = true;
+            _hostOfflineShown = false;
+            ClearHostOffline();
+            if (_state == UiState.Panel) RefreshPanel();
+        });
 
         try
         {
@@ -343,16 +371,174 @@ public partial class MainWindow : Window
 
     private void OnIdleTick()
     {
+        PollHost();
+
         if (_current is not null) return;
         if (_state is UiState.Alert or UiState.Result or UiState.Panel or UiState.Done) return;
 
         var idle = DateTime.UtcNow - _lastActivityUtc;
+
+        // 宿主不在场时不要躲起来 —— 此时胶囊本身就是要说的事。
+        // 注意：这里不能每帧都调 Wake()，否则弹簧永远被重置、胶囊一直抖。
+        // 离线 -> 可见 的切换由 PollHost 一次性完成；离线期间的"收成小点"也在那里管。
+        if (_hostAlive == false) return;
 
         if (!_dormant && DormantAfter > TimeSpan.Zero && idle >= DormantAfter)
             EnterDormant();
 
         if (!_hidden && HideAfter > TimeSpan.Zero && idle >= HideAfter)
             HideToTray();
+    }
+
+    // ================= 宿主在线状态 =================
+
+    /// <summary>
+    /// 每秒探一次宿主进程。只在"状态翻转"时动作：
+    ///   · 在场 → 不在场：胶囊亮起来变灰，告诉用户"宿主已退出"
+    ///   · 不在场 → 在场：恢复成正常待机
+    /// 进程探测比钩子可靠（强杀/崩溃时没有任何钩子会触发），钩子 /hello 只做加速。
+    /// </summary>
+    private void PollHost()
+    {
+        var alive = HostWatcher.AnyRunning();
+
+        if (_hostAlive == alive)
+        {
+            // 状态没变，但离线已经很久且用户没理它：别永久占着屏幕顶部
+            if (!alive && _hostOfflineShown &&
+                DateTime.UtcNow - _hostGoneSinceUtc > HostOfflineLinger &&
+                _current is null)
+            {
+                _hostOfflineShown = false;
+                EnterDormant();
+            }
+            return;
+        }
+
+        var first = _hostAlive is null;
+        _hostAlive = alive;
+
+        if (!alive)
+        {
+            _hostGoneSinceUtc = DateTime.UtcNow;
+            HookRunner.Trace("[HOST] gone -> 显示离线态");
+            _hostOfflineShown = true;
+            ShowHostOffline();
+        }
+        else
+        {
+            HookRunner.Trace("[HOST] alive -> 恢复待机");
+            if (!first)
+            {
+                _hostOfflineShown = false;
+                ClearHostOffline();
+            }
+        }
+
+        if (_state == UiState.Panel) RefreshPanel();
+    }
+
+    /// <summary>
+    /// 宿主不见了。
+    ///
+    /// 只改胶囊上的小字没人会看见（用户此时根本没盯着屏幕顶部），
+    /// 所以先弹一张和「任务完成」同款的通知卡：宿主已退出、点一下能重新打开。
+    /// 卡片收起来后，胶囊留在灰态待机（"已断开"），直到宿主回来。
+    /// </summary>
+    private void ShowHostOffline()
+    {
+        if (_current is not null) return;   // 授权卡优先级更高
+
+        // 隐藏 / 休眠 都要先出来，否则用户根本看不到"宿主没了"
+        if (_hidden) ShowFromTray();
+        else if (_dormant) Wake();
+
+        StatusDot.Fill = OffBrush;
+        DormantDot.Fill = OffBrush;
+        IdleText.Text = "已断开";
+        IdleText.Foreground = OffTextBrush;
+
+        if (_state is UiState.Idle or UiState.Dormant)
+        {
+            _state = UiState.Idle;
+            FadeIn(IdleLayer, 90);   // 从隐藏回来时待机层可能还是透明的
+        }
+
+        // 弹出离线卡（正等着授权时不抢屏）
+        if (_state == UiState.Idle)
+            ShowHostOfflineCard();
+
+        _lastActivityUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>和完成卡共用一张卡片，只换配色和文案。</summary>
+    private void ShowHostOfflineCard()
+    {
+        _done = null;
+        _dormant = false;
+        _state = UiState.Done;
+
+        DoneTitle.Text = "WorkBuddy 已退出";
+        DoneSummary.Text = "授权请求收不到了 · 点一下重新打开";
+        DoneAction.Text = "重新打开";
+
+        DoneIconBorder.Background = Freeze(new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF)));
+        DoneIcon.Stroke = OffTextBrush;
+        DoneAction.Foreground = OffTextBrush;
+        DoneArrow.Stroke = OffTextBrush;
+        DoneIcon.Data = Geometry.Parse("M4.5,4.5 L11.5,11.5 M11.5,4.5 L4.5,11.5");
+        DoneIcon.StrokeThickness = 1.8;
+
+        AnimateTo(DoneW, DoneH, DoneR);
+        Fade(Capsule, 1, 160);
+        Fade(Shadow, 0.30, 160);
+        Fade(DormantDot, 0, 80);
+        Fade(IdleLayer, 0, 90);
+        Fade(ResultLayer, 0, 90);
+
+        IdleLayer.IsHitTestVisible = false;
+        DoneLayer.IsHitTestVisible = true;
+        FadeIn(DoneLayer, 50);
+
+        StartDoneTimer(OfflineLinger);
+    }
+
+    /// <summary>把卡片恢复成「任务完成」的配色，供下一次真正的完成通知使用。</summary>
+    private void StyleDoneCard()
+    {
+        DoneTitle.Text = "任务完成";
+        DoneAction.Text = "查看会话";
+
+        DoneIconBorder.Background = Freeze(new SolidColorBrush(Color.FromArgb(0x22, 0x4A, 0xDE, 0x80)));
+        DoneIcon.Stroke = OkBrush;
+        DoneIcon.StrokeThickness = 2;
+        DoneIcon.Data = Geometry.Parse("M4,8.5 L7,11.5 L12.5,5.5");
+        DoneAction.Foreground = DoneAccentBrush;
+        DoneArrow.Stroke = DoneAccentBrush;
+    }
+
+    private void ClearHostOffline()
+    {
+        IdleText.Text = "WorkBuddy";
+        IdleText.Foreground = OnTextBrush;
+
+        var live = _paused ? WarnBrush : OkBrush;
+        StatusDot.Fill = live;
+        DormantDot.Fill = live;
+
+        if (_hidden) return;
+
+        if (_dormant)
+        {
+            Wake();
+            return;
+        }
+
+        if (_state == UiState.Idle)
+        {
+            AnimateTo(IdleW, IdleH, IdleR);
+            FadeIn(IdleLayer, 90);
+        }
     }
 
     /// <summary>没有任何事件时，把胶囊缩成一颗几乎看不见的小点 —— 不挡视线。</summary>
@@ -461,12 +647,25 @@ public partial class MainWindow : Window
         {
             case UiState.Idle:
             case UiState.Dormant:
+                // 宿主不在时，点一下最有用的动作是把它拉起来
+                if (_hostAlive == false)
+                {
+                    LaunchHost();
+                    return;
+                }
                 ShowPanel();
                 break;
             case UiState.Panel:
                 HidePanel();
                 break;
             case UiState.Done:
+                if (_hostAlive == false)
+                {
+                    // 这是"宿主已退出"卡：点一下把它拉起来，而不是去找会话
+                    DismissDone();
+                    LaunchHost();
+                    break;
+                }
                 // 点完成卡片 = 直达会话
                 var sessionId = _done?.SessionId ?? "";
                 DismissDone();
@@ -540,6 +739,7 @@ public partial class MainWindow : Window
         _dormant = false;
 
         string summary = notice.Summary.Trim();
+        StyleDoneCard();
         DoneSummary.Text = string.IsNullOrEmpty(summary) ? "可以在会话里查看结果" : summary;
 
         // 已经在显示完成卡（连续两个任务收尾）：直接换文案，重新计时，
@@ -603,6 +803,33 @@ public partial class MainWindow : Window
         catch
         {
             FocusAgentWindow();
+        }
+    }
+
+    /// <summary>
+    /// 宿主离线时点胶囊：先用深链把它叫起来（已在运行则等于切回窗口），
+    /// 深链不可用再试 SetForegroundWindow，最后退回到打开面板让用户看到状态。
+    /// </summary>
+    private void LaunchHost()
+    {
+        HookRunner.Trace("[HOST] 点击胶囊：尝试唤起宿主");
+
+        if (HostWatcher.AnyRunning())
+        {
+            HostWatcher.BringToFront();
+            _hostAlive = true;
+            ClearHostOffline();
+            return;
+        }
+
+        // 没在运行：深链会拉起宿主；返回 false 说明深链没注册，退回面板显示状态
+        try
+        {
+            Process.Start(new ProcessStartInfo("workbuddy://home") { UseShellExecute = true });
+        }
+        catch
+        {
+            ShowPanel();
         }
     }
 
@@ -693,12 +920,37 @@ public partial class MainWindow : Window
     private void RefreshPanel()
     {
         PanelPort.Text = _server.IsRunning ? $"127.0.0.1:{_server.Port}" : "服务未启动";
-        PanelDot.Fill = _paused ? WarnBrush : OkBrush;
-        PanelState.Text = _paused ? "已暂停" : "待机";
         PauseText.Text = _paused ? "恢复拦截" : "暂停拦截";
         SyncPauseMenuItem();
 
-        if (_paused)
+        var hostAlive = _hostAlive ?? HostWatcher.AnyRunning();
+        _hostAlive = hostAlive;
+
+        HostDot.Fill = hostAlive ? OkBrush : OffBrush;
+        if (hostAlive)
+        {
+            HostState.Text = "WorkBuddy 已连接";
+            HostState.Foreground = DimTextBrush;
+        }
+        else
+        {
+            var away = _hostGoneSinceUtc == DateTime.MinValue
+                ? ""
+                : $" · {Ago(_hostGoneSinceUtc)}退出";
+            HostState.Text = $"WorkBuddy 未运行{away}（点击胶囊可启动）";
+            HostState.Foreground = OffTextBrush;
+        }
+
+        PanelDot.Fill = !hostAlive ? OffBrush : _paused ? WarnBrush : OkBrush;
+        PanelState.Text = !hostAlive ? "宿主离线" : _paused ? "已暂停" : "待机";
+
+        if (!hostAlive)
+        {
+            PanelStatus.Text = _paused
+                ? "宿主当前未运行。等它启动后，授权请求会自动弹到这里。"
+                : "宿主当前未运行，所以不会有授权请求进来。点胶囊或托盘图标可以把它拉起来。";
+        }
+        else if (_paused)
         {
             PanelStatus.Text = "已暂停拦截：新请求不再弹卡片，直接交回各 Agent 自己的审批流程。";
         }
